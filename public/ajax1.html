@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+
+    <title></title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <div id="game-over-overlay">
+    </div>
+
+    <div id="game-over">
+      <h1>GAME OVER</h1>
+      <button class="play-again">Play Again</button>
+    </div>
+	<div id="game-win-overlay">
+    </div>
+	<div id="game-win">
+      <h1>You Win</h1>
+      <button class="play-again">Play Again</button>
+    </div>
+    <div class="wrapper">
+	  <input type="text" id="name" >
+	  <button type="button" id="start" >Начать играть</button>
+      <div id="instructions">
+        <div>
+          Передвижение: <span class="key">стрелки</span> или <span class="key">W/S</span>
+        </div>
+        <div>
+          Стрелять по кнопке: <span class="key">space</span>
+        </div>
+      </div>
+
+      <div id="score"></div>
+	 </div>
+	<script src="/socket.io.js"></script>
+    <script src="/resources.js"></script>
+    <script  src="/sprite.js"></script>
+	<script  src="/input.js"></script>
+  </body>
+<script>
+var canvas = document.createElement("canvas");
+var ctx = canvas.getContext("2d");
+canvas.width = 512;
+canvas.height = 480;
+document.body.appendChild(canvas);
+var socket = io();
+var terrainPattern;
+var lastTime;
+var bullet = new Sprite('/sprites.png', [0, 39], [18, 8]);
+var bulletsize = bullet.size;
+
+document.getElementById('start').addEventListener('click', function() {
+    socket.emit('name', document.getElementById('name').value);
+	
+});
+player = {
+	pos: [],
+	bullets : [],
+	isGameOver:false,
+	ready : false,
+	sprite: new Sprite('/tank10.png', [40, 20], [20, 20]),
+	computerEnemy : {
+		pos: [],
+	    isGameOver: false,
+	    bullets : [],  
+		sprite: new Sprite('/tank12.png', [0, 20], [20, 20])
+	}
+};
+var computersize = new Sprite('/tank12.png', [0, 20], [20, 20]);
+
+var requestAnimFrame = (function(){
+    return window.requestAnimationFrame       ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame    ||
+        window.oRequestAnimationFrame      ||
+        window.msRequestAnimationFrame     ||
+        function(callback){
+            window.setTimeout(callback, 1000 / 60);
+        };
+})();
+
+socket.on('start', function(newplayer) {
+	player.pos[0] = newplayer.pos[0];
+	player.pos[1] = newplayer.pos[1];
+	player.computerEnemy.pos[0] = newplayer.computerEnemy.pos[0];
+	player.computerEnemy.pos[1] = newplayer.computerEnemy.pos[1];
+	player.isGameOver=newplayer.isGameOver;
+	player.computerEnemy.isGameOver=newplayer.computerEnemy.isGameOver;
+	player.isGameOver=newplayer.isGameOver;
+	player.computerEnemy.isGameOver=newplayer.computerEnemy.isGameOver;
+	player.bullets=[];
+	player.computerEnemy.bullets=[];
+	for(var i=0; i<newplayer.bullets.length; i++) {
+        player.bullets.push({ pos: [newplayer.bullets[i].pos[0], newplayer.bullets[i].pos[1]], 
+		sprite : new Sprite('/sprites.png', [0, 39], [18, 8])
+		});
+    }  
+	for(var i=0; i<newplayer.computerEnemy.bullets.length; i++) {
+        player.bullets.push({ pos: [newplayer.computerEnemy.bullets[i].pos[0], newplayer.computerEnemy.bullets[i].pos[1]], 
+		sprite : new Sprite('/sprites.png', [20, 39], [18, 8])
+		});
+    }  
+	resources.load([
+		'/tank10.png',
+		'/terrain.png',
+		'/sprites.png',
+		'/tank12.png'
+	]);
+	document.getElementById('start').remove();
+	document.getElementById('name').remove();	
+	resources.onReady(init);
+}); 	
+socket.on('firstload',function(newplayer){		
+	player.pos[0] = newplayer.pos[0];
+	player.pos[1] = newplayer.pos[1];
+	player.computerEnemy.pos[0] = newplayer.computerEnemy.pos[0];
+	player.computerEnemy.pos[1] = newplayer.computerEnemy.pos[1];
+	player.isGameOver=newplayer.isGameOver;
+	player.computerEnemy.isGameOver=newplayer.computerEnemy.isGameOver;
+	player.ready = newplayer.ready;
+});
+socket.on('change',function(newplayer){	
+	player.pos[0]=newplayer.pos[0];
+	player.pos[1]=newplayer.pos[1];
+});
+socket.on('gameupdate',function(newplayer){
+	player.bullets=[];
+	player.computerEnemy.bullets=[];
+	for(var i=0; i<newplayer.bullets.length; i++) {
+        player.bullets.push({ pos: [newplayer.bullets[i].pos[0], newplayer.bullets[i].pos[1]], 
+		sprite : new Sprite('/sprites.png', [0, 39], [18, 8])
+		});
+    }  
+	for(var i=0; i<newplayer.computerEnemy.bullets.length; i++) {
+        player.bullets.push({ pos: [newplayer.computerEnemy.bullets[i].pos[0], newplayer.computerEnemy.bullets[i].pos[1]], 
+		sprite : new Sprite('/sprites.png', [20, 39], [18, 8])
+		});
+    }  
+	player.computerEnemy.pos[1]=newplayer.computerEnemy.pos[1];
+});
+socket.on('gameover',function(newplayer){
+	player.isGameOver=newplayer.isGameOver;
+	player.computerEnemy.isGameOver=newplayer.computerEnemy.isGameOver;
+	if (player.isGameOver){
+		gameOver();
+	}
+	if (player.computerEnemy.isGameOver){
+		gameWin();
+	}
+});
+function init() {
+    terrainPattern = ctx.createPattern(resources.get('/terrain.png'), 'repeat');
+	render();
+    document.getElementsByClassName('play-again')[0].addEventListener('click', function() {
+        reset();
+    });
+	document.getElementsByClassName('play-again')[1].addEventListener('click', function() {
+        reset();
+    });
+	console.log(player.isGameOver)
+	if (player.isGameOver){
+		gameOver();
+	}
+	if (player.computerEnemy.isGameOver){
+		gameWin();
+	}
+		socket.emit('firstload');
+		lastTime = Date.now();
+		main();
+}
+function main() {
+    var now = Date.now();
+    var dt = (now - lastTime) / 1000.0;
+	handleInput(dt);
+	socket.emit('update',dt,canvas.width, player.computerEnemy.sprite.size);
+	socket.emit('checkCollision',bulletsize,player.computerEnemy.sprite.size,player.sprite.size);
+	if (player.ready){		
+		render();
+	}
+    lastTime = now;
+    requestAnimFrame(main);
+};
+function handleInput(dt) {
+	if (!player.isGameOver && !player.computerEnemy.isGameOver){
+		if(input.isDown('DOWN') || input.isDown('s')) {
+			socket.emit('down',dt,canvas.height,player.sprite.size[1]);
+			
+		}
+		
+		if(input.isDown('UP') || input.isDown('w')) {
+			socket.emit('up',dt,canvas.height,player.sprite.size[1]);
+		}
+
+		if(input.isDown('SPACE') &&
+		   !player.isGameOver) {		   
+			socket.emit('space',player.sprite.size);
+		}
+	}
+}
+function render() {
+    ctx.fillStyle = terrainPattern;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if(!player.isGameOver) {
+        renderEntity(player);
+    }
+	if(!player.computerEnemy.isGameOver) {
+		renderEntity(player.computerEnemy);
+    }
+    renderEntities(player.bullets);
+};
+function renderEntities(list) {
+    for(var i=0; i<list.length; i++) {
+        renderEntity(list[i]);
+    }    
+}
+function renderEntity(entity) {
+    ctx.save();	
+    ctx.translate(entity.pos[0], entity.pos[1]);
+    entity.sprite.render(ctx);
+    ctx.restore();
+}
+function gameOver() {
+    document.getElementById('game-over').style.display = 'block';
+    document.getElementById('game-over-overlay').style.display = 'block';
+}
+function gameWin() {
+    document.getElementById('game-win').style.display = 'block';
+    document.getElementById('game-win-overlay').style.display = 'block';
+}
+function reset() {
+    document.getElementById('game-over').style.display = 'none';
+    document.getElementById('game-over-overlay').style.display = 'none';
+	document.getElementById('game-win').style.display = 'none';
+    document.getElementById('game-win-overlay').style.display = 'none';
+	socket.emit('reset');
+};
+    </script>
+<html>
